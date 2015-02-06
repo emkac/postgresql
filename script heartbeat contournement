@@ -1,0 +1,23 @@
+J'ai trouvé la solution.
+Postgresql 8.4
+Hearbeat (package sqeeze)1:3.0.3-2
+
+Le problème vient du fait que hearbeat lance un status sur les services avant de lancer un start.
+Postgresql renvoie comme status : "Running clusters: "
+J'ai changé le message comme suit "Status clusters: " dans le fichier suivant: /usr/share/postgresql-common/init.d-functions
+Cette solution n'est pas viable car la prochaine mise à jour risque d'écraser ma modif.
+Les logs de hearbeat ne sont pas assez explicite pour aller directement au problème.
+J'opte donc pour le contournement que Pierre Locquet a mit en œuvre.
+La solution finale.
+Faire un script pour contourner le problème. /etc/ha.d/resource.d/hapostgresql
+
+#!/bin/sh
+#
+# the script works around the problem by launching the heartbeat of the status control, before launching postgresql.
+#
+# debug
+# echo "STARTING THE POSTGRESQL $*" >> /var/log/mylog #
+/etc/init.d/postgresql $1 >> /dev/null
+
+
+http://grokbase.com/t/postgresql/pgsql-fr-generale/111t87wyqz/postgresql-and-heartbeat
