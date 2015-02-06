@@ -1,0 +1,89 @@
+#!/usr/bin/perl -w
+#
+# Monitor multiple postgresql databases on different hosts
+#
+# Based on postgresql.monitor 1.3
+# by Severin Luftensteiner <severin.luftensteiner@cubit.at>
+#
+#Usage:  postresql.monitor username[:password]\@host/database ...
+#
+# a monitor to determine if a PostgreSQL database server is operational
+#
+# Rather than use tcp.monitor to ensure that your SQL server is responding
+# on the proper port, this attempts to connect to and count all tables
+# in given database on given server.
+#
+# You can use this monitor along with fping+args which also knows how to
+# ping hosts in that user@host/dabase format.
+#
+# This monitor requires the perl5 DBI, DBD::mSQL and DBD::mysql modules,
+# available from CPAN (http://www.cpan.org)
+#
+#    Copyright (C) 2001, CubIT IT Solutions
+#    Written by Severin Luftensteiner <severin.luftensteiner@cubit.at>
+#    Copyright (C) 2002, Dobrica Pavlinusic <dpavlin@rot13.org>
+#
+#    This program is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+
+use DBI;
+use strict;
+
+if (! @ARGV) {
+print <<EOP1;
+Usage:  postresql.monitor username[:password]\@host/database ...
+EOP1
+	exit 1;
+}
+
+my @test_db;
+my @failures;
+$ARGV[0] = "mon:password\@localhost/mon";
+
+
+foreach (@ARGV) {
+	if (m/^([^:]+):?([^\@]*)\@([^\/]+)\/?(.*)$/) {
+		push @test_db, { user => $1, passwd => $2, host => $3, database => $4 };
+	} else {
+		push @failures, "Can't parse configuration: host '$_' not in username:password\@host/database format!";
+	}
+}
+
+foreach (@test_db) {
+	my $dbh = DBI->connect( "DBI:Pg:dbname=$_->{database};host=$_->{host};", $_->{user}, $_->{passwd} );
+	if( ! $dbh ) {
+		push @failures,"Could not connect server $_->{host}, database $_->{database}: " . $DBI::errstr;
+	} else {
+		my $sth = $dbh->prepare("select count(*) from pg_tables where tablename not like 'pg_%'");
+		if (! $sth->execute() ) {
+			push @failures, "Can't find out number of tables on $_->{host}, database $_->{database} " . $DBI::errstr;
+		} else {
+			my ($nr) = $sth->fetchrow_array;
+			if ($nr == 0) {
+				push @failures, "No tables on $_->{host}, database $_->{database} (turn off monitoring for this database?)";
+			}
+		}
+		$sth->finish();
+	}
+	if ($dbh) {
+		$dbh->disconnect();
+	}
+}
+
+if (@failures) {
+    print join (", ", @failures), "\n";
+    exit 1;
+};
+exit 0;
